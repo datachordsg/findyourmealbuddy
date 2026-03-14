@@ -199,7 +199,7 @@
         <input
             id="zoomSlider"
             type="range"
-            min="0.01"
+            min="0.55"
             max="2.8"
             step="0.01"
             value="1.00"
@@ -249,6 +249,22 @@
             };
         }
 
+        function cloneCenter(center) {
+            return {
+                x: Number((center && center.x) || 0),
+                y: Number((center && center.y) || 0),
+                z: Number((center && center.z) || 0)
+            };
+        }
+
+        function cloneUp(up) {
+            return {
+                x: Number((up && up.x) || DEFAULT_UP.x),
+                y: Number((up && up.y) || DEFAULT_UP.y),
+                z: Number((up && up.z) || DEFAULT_UP.z)
+            };
+        }
+
         function normalizeEye(eye) {
             const mag = eyeMagnitude(eye);
             if (mag === 0) return cloneEye(DEFAULT_EYE);
@@ -259,13 +275,16 @@
             };
         }
 
-        function currentEye() {
+        function currentCamera() {
             const cam = (plot.layout && plot.layout.scene && plot.layout.scene.camera)
                 ? plot.layout.scene.camera
                 : null;
 
-            if (cam && cam.eye) return cloneEye(cam.eye);
-            return cloneEye(DEFAULT_EYE);
+            return {
+                eye: cam && cam.eye ? cloneEye(cam.eye) : cloneEye(DEFAULT_EYE),
+                center: cam && cam.center ? cloneCenter(cam.center) : {x: 0, y: 0, z: 0},
+                up: cam && cam.up ? cloneUp(cam.up) : cloneUp(DEFAULT_UP)
+            };
         }
 
         function sliderFromEye(eye) {
@@ -277,7 +296,8 @@
         }
 
         function updateSliderFromCurrentCamera() {
-            const scale = sliderFromEye(currentEye());
+            const cam = currentCamera();
+            const scale = sliderFromEye(cam.eye);
             const minV = parseFloat(zoomSlider.min);
             const maxV = parseFloat(zoomSlider.max);
             const clipped = Math.max(minV, Math.min(maxV, scale));
@@ -286,9 +306,10 @@
         }
 
         function applyZoomScale(scale) {
-            const eye = currentEye();
-            const dir = normalizeEye(eye);
+            const cam = currentCamera();
+            const dir = normalizeEye(cam.eye);
             const newMag = DEFAULT_EYE_MAG * scale;
+
             const newEye = {
                 x: dir.x * newMag,
                 y: dir.y * newMag,
@@ -297,18 +318,19 @@
 
             Plotly.relayout(plot, {
                 "scene.camera.eye": newEye,
-                "scene.camera.up": DEFAULT_UP,
+                "scene.camera.center": cam.center,
+                "scene.camera.up": cam.up,
                 "scene.dragmode": "orbit"
             });
 
             setZoomText(scale);
         }
 
-        function setCameraAndSyncSlider(eyeObj) {
+        function setCameraAndSyncSlider(cameraObj) {
             Plotly.relayout(plot, {
-                "scene.camera.eye": eyeObj,
-                "scene.camera.center": {x: 0, y: 0, z: 0},
-                "scene.camera.up": DEFAULT_UP,
+                "scene.camera.eye": cameraObj.eye,
+                "scene.camera.center": cameraObj.center,
+                "scene.camera.up": cameraObj.up,
                 "scene.dragmode": "orbit"
             }).then(() => {
                 updateSliderFromCurrentCamera();
@@ -379,12 +401,17 @@
         }
 
         function zoomToCoordinates(x, y, z) {
-            const eyeObj = {
-                x: x + CLICK_ZOOM_OFFSET.x,
-                y: y + CLICK_ZOOM_OFFSET.y,
-                z: z + CLICK_ZOOM_OFFSET.z
-            };
-            setCameraAndSyncSlider(eyeObj);
+            const cam = currentCamera();
+
+            setCameraAndSyncSlider({
+                eye: {
+                    x: x + CLICK_ZOOM_OFFSET.x,
+                    y: y + CLICK_ZOOM_OFFSET.y,
+                    z: z + CLICK_ZOOM_OFFSET.z
+                },
+                center: cam.center,
+                up: cam.up
+            });
         }
 
         function resetView() {
@@ -403,7 +430,12 @@
                 }]
             }, [highlightTraceIndex]);
 
-            setCameraAndSyncSlider(DEFAULT_EYE);
+            setCameraAndSyncSlider({
+                eye: cloneEye(DEFAULT_EYE),
+                center: {x: 0, y: 0, z: 0},
+                up: cloneUp(DEFAULT_UP)
+            });
+
             status.textContent = "View reset.";
         }
 
